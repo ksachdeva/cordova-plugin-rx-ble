@@ -1,0 +1,21 @@
+<ion-header>
+  <ion-navbar>
+    <ion-title>
+      Devices
+    </ion-title>
+  </ion-navbar>
+</ion-header>
+
+<ion-content padding>
+  <button (click)="startScan()">Start Scan</button>
+  <button (click)="stopScan()">Stop Scan</button>
+
+  <ion-list>
+    <ion-item *ngFor="let item of devices">
+      {{ item.uuid }} : {{ item.rssi }}
+      <button (click)="connectToDevice(item.uuid)">Connect</button>
+    </ion-item>
+  </ion-list>
+
+
+</ion-content>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<plugin id="cordova-plugin-rx-ble" version="0.1.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+
+    <name>BleCentral</name>
+
+    <asset src="www/central.js" target="js/central.js"/>
+
+    <js-module name="central" src="www/central.js">
+        <clobbers target="cordova.plugins.ble.Central"/>
+    </js-module>
+
+    <platform name="android">
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="CentralPlugin">
+                <param name="android-package" value="com.ksachdeva.opensource.ble.central.CentralPlugin"/>
+            </feature>
+        </config-file>
+
+        <config-file target="AndroidManifest.xml" parent="/manifest">
+            <uses-permission android:name="android.permission.BLUETOOTH"/>
+            <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+        </config-file>
+
+        <source-file src="src/android/CentralPlugin.java" target-dir="src/com/ksachdeva/opensource/ble/central"/>
+        <source-file src="src/android/Event.java" target-dir="src/com/ksachdeva/opensource/ble/central"/>
+        <source-file src="src/android/converters/RxBleScanResultConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
+        <source-file src="src/android/converters/RxBleDeviceConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
+        <source-file src="src/android/errors/BleError.java" target-dir="src/com/ksachdeva/opensource/ble/central/errors"/>
+        <source-file src="src/android/errors/Error.java" target-dir="src/com/ksachdeva/opensource/ble/central/errors"/>
+        <source-file src="src/android/errors/ErrorConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/errors"/>
+        <source-file src="src/android/utils/DisposableMap.java" target-dir="src/com/ksachdeva/opensource/ble/central/utils"/>
+        <source-file src="src/android/utils/UUIDConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/utils"/>
+
+        <framework src="com.polidea.rxandroidble:rxandroidble:1.0.2"/>
+
+    </platform>
+
+</plugin>
