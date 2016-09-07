@@ -1,11 +1,15 @@
 package com.ksachdeva.opensource.ble.central;
 
+import java.util.HashMap;
+import java.util.UUID;
+
 import org.apache.cordova.*;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.content.pm.LauncherApps;
+import android.telecom.Call;
 import android.util.Log;
 import android.content.Context;
 
@@ -14,10 +18,6 @@ import com.polidea.rxandroidble.RxBleConnection;
 import com.polidea.rxandroidble.RxBleScanResult;
 import com.polidea.rxandroidble.RxBleDevice;
 import com.polidea.rxandroidble.internal.RxBleLog;
-
-
-import java.util.HashMap;
-import java.util.UUID;
 
 import rx.Observer;
 import rx.Subscription;
@@ -45,6 +45,7 @@ public class CentralPlugin extends CordovaPlugin {
 
     // various callback context
     private CallbackContext deviceScanCallbackContext;
+    private CallbackContext monitorDeviceDisconnectCallbackContext;
 
     private RxBleScanResultConverter scanResult = new RxBleScanResultConverter();
     private ErrorConverter errorConverter = new ErrorConverter();
@@ -72,6 +73,15 @@ public class CentralPlugin extends CordovaPlugin {
       } else if (action.equals("connectToDevice")) {
           connectToDevice(args, callbackContext);
           return true;
+      } else if (action.equals("monitorDeviceDisconnect")) {
+          monitorDeviceDisconnect(args, callbackContext);
+          return true;
+      } else if (action.equals("disconnectDevice")) {
+          disconnectDevice(args, callbackContext);
+          return true;
+      } else if (action.equals("isDeviceConnected")) {
+          isDeviceConnected(args, callbackContext);
+          return true;
       }
 
       return false;
@@ -88,6 +98,11 @@ public class CentralPlugin extends CordovaPlugin {
         }
 
         rxBleClient = null;
+    }
+
+    private void monitorDeviceDisconnect(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        // let's keep the callback
+        this.monitorDeviceDisconnectCallbackContext = callbackContext;
     }
 
     private void startDeviceScan(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
@@ -129,6 +144,38 @@ public class CentralPlugin extends CordovaPlugin {
             scanSubscription.unsubscribe();
             scanSubscription = null;
         }
+    }
+
+    private void disconnectDevice(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        String deviceId = args.getString(0);
+
+        final RxBleDevice device = rxBleClient.getBleDevice(deviceId);
+
+        if (connectingDevices.removeSubscription(deviceId) && device != null) {
+            sendSuccess(callbackContext, deviceConverter.toJSObject(device), false);
+        } else {
+            if (device == null) {
+                sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+            } else {
+                sendError(callbackContext, BleError.deviceNotConnected(deviceId).toJS(), false);
+            }
+        }
+    }
+
+    private void isDeviceConnected(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        String deviceId = args.getString(0);
+
+        final RxBleDevice device = rxBleClient.getBleDevice(deviceId);
+
+        if (device == null) {
+            sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+            return;
+        }
+
+        boolean connected = device.getConnectionState()
+                .equals(RxBleConnection.RxBleConnectionState.CONNECTED);
+
+        sendSuccess(callbackContext, connected, false);
     }
 
     private void connectToDevice(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
@@ -174,7 +221,6 @@ public class CentralPlugin extends CordovaPlugin {
                         });
 
                 connectingDevices.replaceSubscription(device.getMacAddress(), subscription);
-
             }
         });
     }
@@ -182,7 +228,10 @@ public class CentralPlugin extends CordovaPlugin {
     private void onDeviceDisconnected(RxBleDevice device) {
         connectingDevices.removeSubscription(device.getMacAddress());
         connectionMap.remove(device.getMacAddress());
-        // sendEvent(Event.DisconnectionEvent, converter.device.toJSCallback(device));
+
+        if (this.monitorDeviceDisconnectCallbackContext != null) {
+            sendSuccess(this.monitorDeviceDisconnectCallbackContext, deviceConverter.toJSObject(device), true);
+        }
     }
 
     private void sendError(final CallbackContext callbackContext, JSONObject object, boolean keepCallback) {
@@ -192,6 +241,12 @@ public class CentralPlugin extends CordovaPlugin {
     }
 
     private void sendSuccess(final CallbackContext callbackContext, JSONObject object, boolean keepCallback) {
+        PluginResult result = new PluginResult(PluginResult.Status.OK, object);
+        result.setKeepCallback(keepCallback);
+        callbackContext.sendPluginResult(result);
+    }
+
+    private void sendSuccess(final CallbackContext callbackContext, boolean object, boolean keepCallback) {
         PluginResult result = new PluginResult(PluginResult.Status.OK, object);
         result.setKeepCallback(keepCallback);
         callbackContext.sendPluginResult(result);

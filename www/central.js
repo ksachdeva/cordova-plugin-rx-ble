@@ -22,6 +22,10 @@ var Central = {
         exec(successCallback, errorCallback, PLUGIN_NAME, 'stopScan', []);
     },
 
+    monitorDeviceDisconnect: function(successCallback, errorCallback) {
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'monitorDeviceDisconnect', []);
+    },
+
     connectToDevice: function(options, successCallback, errorCallback) {
         var deviceId = getValue(options.deviceId, undefined);
 
@@ -31,6 +35,28 @@ var Central = {
 
         var args = [deviceId];
         exec(successCallback, errorCallback, PLUGIN_NAME, 'connectToDevice', args);
+    },
+
+    disconnectDevice: function(options, successCallback, errorCallback) {
+        var deviceId = getValue(options.deviceId, undefined);
+
+        if (isNotAcceptable(deviceId)) {
+            throw new Error('Invalid arguments !');
+        }
+
+        var args = [deviceId];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'disconnectDevice', args);
+    },
+
+    isDeviceConnected: function(options, successCallback, errorCallback) {
+        var deviceId = getValue(options.deviceId, undefined);
+
+        if (isNotAcceptable(deviceId)) {
+            throw new Error('Invalid arguments !');
+        }
+
+        var args = [deviceId];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'isDeviceConnected', args);
     }
 };
 
