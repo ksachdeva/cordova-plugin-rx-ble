@@ -12,11 +12,14 @@ import android.content.pm.LauncherApps;
 import android.telecom.Call;
 import android.util.Log;
 import android.content.Context;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattService;
 
 import com.polidea.rxandroidble.RxBleClient;
 import com.polidea.rxandroidble.RxBleConnection;
 import com.polidea.rxandroidble.RxBleScanResult;
 import com.polidea.rxandroidble.RxBleDevice;
+import com.polidea.rxandroidble.RxBleDeviceServices;
 import com.polidea.rxandroidble.internal.RxBleLog;
 
 import rx.Observer;
@@ -30,6 +33,9 @@ import com.ksachdeva.opensource.ble.central.errors.ErrorConverter;
 import com.ksachdeva.opensource.ble.central.errors.BleError;
 import com.ksachdeva.opensource.ble.central.converters.RxBleScanResultConverter;
 import com.ksachdeva.opensource.ble.central.converters.RxBleDeviceConverter;
+import com.ksachdeva.opensource.ble.central.converters.BluetoothGattCharacteristicConverter;
+import com.ksachdeva.opensource.ble.central.converters.BluetoothGattServiceConverter;
+
 
 public class CentralPlugin extends CordovaPlugin {
 
@@ -50,6 +56,8 @@ public class CentralPlugin extends CordovaPlugin {
     private RxBleScanResultConverter scanResult = new RxBleScanResultConverter();
     private ErrorConverter errorConverter = new ErrorConverter();
     private RxBleDeviceConverter deviceConverter = new RxBleDeviceConverter();
+    private BluetoothGattServiceConverter serviceConverter = new BluetoothGattServiceConverter();
+    private BluetoothGattCharacteristicConverter characteristicConverter = new BluetoothGattCharacteristicConverter();
 
     @Override
     protected void pluginInitialize() {
@@ -81,6 +89,9 @@ public class CentralPlugin extends CordovaPlugin {
           return true;
       } else if (action.equals("isDeviceConnected")) {
           isDeviceConnected(args, callbackContext);
+          return true;
+      } else if (action.equals("discoverServices")) {
+          discoverServices(args, callbackContext);
           return true;
       }
 
@@ -225,6 +236,53 @@ public class CentralPlugin extends CordovaPlugin {
         });
     }
 
+    public void discoverServices(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+
+        final String deviceId = args.getString(0);
+
+        final RxBleDevice device = rxBleClient.getBleDevice(deviceId);
+
+        if (device == null) {
+            sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+            return;
+        }
+
+        final RxBleConnection rxBleConnection = connectionMap.get(deviceId);
+        if (rxBleConnection == null) {
+            sendError(callbackContext, BleError.deviceNotConnected(deviceId).toJS(), false);
+            return;
+        }
+
+        rxBleConnection.discoverServices()
+                .subscribe(new Observer<RxBleDeviceServices>() {
+                    @Override
+                    public void onCompleted() {
+
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+                    }
+
+                    @Override
+                    public void onNext(RxBleDeviceServices bluetoothGattServices) {
+
+                        try {
+                            JSONArray services = new JSONArray();
+                            for (BluetoothGattService service : bluetoothGattServices.getBluetoothGattServices()) {
+                                JSONObject jsService = serviceConverter.toJSObject(service);
+                                jsService.put("deviceUUID", device.getMacAddress());
+                                services.put(jsService);
+                            }
+                            sendSuccess(callbackContext, services, false);
+                        }catch(JSONException ex) {
+                            // ignored !
+                        }
+                    }
+                });
+    }
+
     private void onDeviceDisconnected(RxBleDevice device) {
         connectingDevices.removeSubscription(device.getMacAddress());
         connectionMap.remove(device.getMacAddress());
@@ -241,6 +299,12 @@ public class CentralPlugin extends CordovaPlugin {
     }
 
     private void sendSuccess(final CallbackContext callbackContext, JSONObject object, boolean keepCallback) {
+        PluginResult result = new PluginResult(PluginResult.Status.OK, object);
+        result.setKeepCallback(keepCallback);
+        callbackContext.sendPluginResult(result);
+    }
+
+    private void sendSuccess(final CallbackContext callbackContext, JSONArray object, boolean keepCallback) {
         PluginResult result = new PluginResult(PluginResult.Status.OK, object);
         result.setKeepCallback(keepCallback);
         callbackContext.sendPluginResult(result);

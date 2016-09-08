@@ -57,6 +57,17 @@ var Central = {
 
         var args = [deviceId];
         exec(successCallback, errorCallback, PLUGIN_NAME, 'isDeviceConnected', args);
+    },
+
+    discoverServices: function(options, successCallback, errorCallback) {
+        var deviceId = getValue(options.deviceId, undefined);
+
+        if (isNotAcceptable(deviceId)) {
+            throw new Error('Invalid arguments !');
+        }
+
+        var args = [deviceId];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'discoverServices', args);
     }
 };
 
