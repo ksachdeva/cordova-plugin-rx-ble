@@ -37,4 +37,8 @@ public class UUIDConverter {
         }
         return UUIDs;
     }
+
+    static public String fromUUID(UUID uuid) {
+        return uuid.toString().toLowerCase();
+    }
 }

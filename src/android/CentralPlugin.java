@@ -93,6 +93,9 @@ public class CentralPlugin extends CordovaPlugin {
       } else if (action.equals("discoverServices")) {
           discoverServices(args, callbackContext);
           return true;
+      } else if (action.equals("discoverCharacteristics")) {
+          discoverCharacteristics(args, callbackContext);
+          return true;
       }
 
       return false;
@@ -234,6 +237,75 @@ public class CentralPlugin extends CordovaPlugin {
                 connectingDevices.replaceSubscription(device.getMacAddress(), subscription);
             }
         });
+    }
+
+    public void discoverCharacteristics(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        final String deviceId = args.getString(0);
+        final String serviceUUIDStr = args.getString(1);
+
+        final RxBleDevice device = rxBleClient.getBleDevice(deviceId);
+
+        if (device == null) {
+            sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+            return;
+        }
+
+        final RxBleConnection rxBleConnection = connectionMap.get(deviceId);
+        if (rxBleConnection == null) {
+            sendError(callbackContext, BleError.deviceNotConnected(deviceId).toJS(), false);
+            return;
+        }
+
+        final UUID serviceUUID = UUIDConverter.convert(serviceUUIDStr);
+        if (serviceUUID == null) {
+            sendError(callbackContext, BleError.invalidUUIDs(serviceUUIDStr).toJS(), false);
+            return;
+        }
+
+        rxBleConnection.discoverServices()
+                .subscribe(new Observer<RxBleDeviceServices>() {
+                    @Override
+                    public void onCompleted() {
+
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+                    }
+
+                    @Override
+                    public void onNext(RxBleDeviceServices bluetoothGattServices) {
+                        BluetoothGattService foundService = null;
+                        for (BluetoothGattService service : bluetoothGattServices.getBluetoothGattServices()) {
+                            if (service.getUuid().equals(serviceUUID)) {
+                                foundService = service;
+                                break;
+                            }
+                        }
+
+                        if (foundService == null) {
+                            sendError(callbackContext, BleError.serviceNotFound(serviceUUIDStr).toJS(), false);
+                            return;
+                        }
+
+                        try {
+
+                            JSONArray jsCharacteristics = new JSONArray();
+                            for (BluetoothGattCharacteristic characteristic : foundService.getCharacteristics()) {
+                                JSONObject value = characteristicConverter.toJSObject(characteristic);
+                                value.put("deviceUUID", device.getMacAddress());
+                                value.put("serviceUUID", UUIDConverter.fromUUID(serviceUUID));
+                                jsCharacteristics.put(value);
+                            }
+                            sendSuccess(callbackContext, jsCharacteristics, false);
+
+                        } catch(JSONException jsex) {
+                            // ignored !!
+                        }
+                    }
+                });
+
     }
 
     public void discoverServices(final JSONArray args, final CallbackContext callbackContext) throws JSONException {

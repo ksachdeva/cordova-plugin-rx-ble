@@ -68,6 +68,21 @@ var Central = {
 
         var args = [deviceId];
         exec(successCallback, errorCallback, PLUGIN_NAME, 'discoverServices', args);
+    },
+
+    discoverCharacteristics: function(options, successCallback, errorCallback) {
+        var deviceId = getValue(options.deviceId, undefined);
+        var serviceUUID = getValue(options.serviceUUID, undefined);
+
+        console.log(deviceId);
+        console.log(serviceUUID);
+
+        if (isNotAcceptable(deviceId) || isNotAcceptable(serviceUUID)) {
+            throw new Error('Invalid arguments !');
+        }
+
+        var args = [deviceId, serviceUUID];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'discoverCharacteristics', args);
     }
 };
 

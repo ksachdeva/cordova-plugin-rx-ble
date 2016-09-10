@@ -25,12 +25,13 @@
         <source-file src="src/android/Event.java" target-dir="src/com/ksachdeva/opensource/ble/central"/>
         <source-file src="src/android/converters/RxBleScanResultConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
         <source-file src="src/android/converters/RxBleDeviceConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
+        <source-file src="src/android/converters/BluetoothGattCharacteristicConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
+        <source-file src="src/android/converters/BluetoothGattServiceConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
         <source-file src="src/android/errors/BleError.java" target-dir="src/com/ksachdeva/opensource/ble/central/errors"/>
         <source-file src="src/android/errors/Error.java" target-dir="src/com/ksachdeva/opensource/ble/central/errors"/>
         <source-file src="src/android/errors/ErrorConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/errors"/>
         <source-file src="src/android/utils/DisposableMap.java" target-dir="src/com/ksachdeva/opensource/ble/central/utils"/>
         <source-file src="src/android/utils/UUIDConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/utils"/>
-
         <framework src="com.polidea.rxandroidble:rxandroidble:1.0.2"/>
 
     </platform>
