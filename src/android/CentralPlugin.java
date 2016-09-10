@@ -14,6 +14,8 @@ import android.util.Log;
 import android.content.Context;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
+import android.support.v4.util.Pair;
+import android.util.Base64;
 
 import com.polidea.rxandroidble.RxBleClient;
 import com.polidea.rxandroidble.RxBleConnection;
@@ -23,9 +25,12 @@ import com.polidea.rxandroidble.RxBleDeviceServices;
 import com.polidea.rxandroidble.internal.RxBleLog;
 
 import rx.Observer;
+import rx.Observable;
 import rx.Subscription;
 import rx.functions.Action0;
 import rx.functions.Action1;
+import rx.functions.Func1;
+import rx.functions.Func2;
 
 import com.ksachdeva.opensource.ble.central.utils.DisposableMap;
 import com.ksachdeva.opensource.ble.central.utils.UUIDConverter;
@@ -96,22 +101,169 @@ public class CentralPlugin extends CordovaPlugin {
       } else if (action.equals("discoverCharacteristics")) {
           discoverCharacteristics(args, callbackContext);
           return true;
+      } else if (action.equals("monitorCharacteristic")) {
+          monitorCharacteristic(args, callbackContext);
+          return true;
+      } else if (action.equals("cancelTransaction")) {
+          cancelTransaction(args, callbackContext);
+          return true;
       }
 
       return false;
     }
 
-    public void createClient() {
+    private void createClient() {
         rxBleClient = RxBleClient.create(this.getApplicationContext());
     }
 
-    public void destroyClient() {
+    private void destroyClient() {
         if (scanSubscription != null && !scanSubscription.isUnsubscribed()) {
             scanSubscription.unsubscribe();
             scanSubscription = null;
         }
 
         rxBleClient = null;
+    }
+
+    private void cancelTransaction(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        final String transactionId = args.getString(0);
+        transactions.removeSubscription(transactionId);
+        callbackContext.success();
+    }
+
+    private void monitorCharacteristic(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        final String deviceId = args.getString(0);
+        final String serviceUUIDStr = args.getString(1);
+        final String charUUIDStr = args.getString(2);
+        final String transactionId = args.getString(3);
+
+        final RxBleDevice device = rxBleClient.getBleDevice(deviceId);
+
+        if (device == null) {
+            sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+            return;
+        }
+
+        final RxBleConnection rxBleConnection = connectionMap.get(deviceId);
+        if (rxBleConnection == null) {
+            sendError(callbackContext, BleError.deviceNotConnected(deviceId).toJS(), false);
+            return;
+        }
+
+        final UUID[] UUIDs = UUIDConverter.convert(serviceUUIDStr, charUUIDStr);
+        if (UUIDs == null) {
+            sendError(callbackContext, BleError.invalidUUIDs(serviceUUIDStr, charUUIDStr).toJS(), false);
+            return;
+        }
+
+        final UUID serviceUUID = UUIDs[0];
+        final UUID charUUID = UUIDs[1];
+
+        cordova.getThreadPool().execute(new Runnable() {
+            public void run() {
+
+                final Subscription subscription = rxBleConnection.discoverServices()
+                        .flatMap(new Func1<RxBleDeviceServices, Observable<BluetoothGattCharacteristic>>() {
+                            @Override
+                            public Observable<BluetoothGattCharacteristic> call(RxBleDeviceServices rxBleDeviceServices) {
+                                return rxBleDeviceServices.getCharacteristic(serviceUUID, charUUID);
+                            }
+                        })
+                        .flatMap(new Func1<BluetoothGattCharacteristic, Observable<Observable<byte[]>>>() {
+                            @Override
+                            public Observable<Observable<byte[]>> call(BluetoothGattCharacteristic bluetoothGattCharacteristic) {
+                                return rxBleConnection.setupNotification(bluetoothGattCharacteristic);
+                            }
+                        }, new Func2<BluetoothGattCharacteristic, Observable<byte[]>, Pair<BluetoothGattCharacteristic, Observable<byte[]>>>() {
+                            @Override
+                            public Pair<BluetoothGattCharacteristic, Observable<byte[]>> call(BluetoothGattCharacteristic bluetoothGattCharacteristic, Observable<byte[]> observable) {
+                                return new Pair<BluetoothGattCharacteristic, Observable<byte[]>>(bluetoothGattCharacteristic, observable);
+                            }
+                        })
+                        .flatMap(new Func1<Pair<BluetoothGattCharacteristic, Observable<byte[]>>, Observable<byte[]>>() {
+                            @Override
+                            public Observable<byte[]> call(Pair<BluetoothGattCharacteristic, Observable<byte[]>> bluetoothGattCharacteristicObservablePair) {
+                                return bluetoothGattCharacteristicObservablePair.second;
+                            }
+                        }, new Func2<Pair<BluetoothGattCharacteristic, Observable<byte[]>>, byte[], Pair<BluetoothGattCharacteristic, byte[]>>() {
+                            @Override
+                            public Pair<BluetoothGattCharacteristic, byte[]> call(Pair<BluetoothGattCharacteristic, Observable<byte[]>> bluetoothGattCharacteristicObservablePair, byte[] bytes) {
+                                return new Pair<BluetoothGattCharacteristic, byte[]>(bluetoothGattCharacteristicObservablePair.first, bytes);
+                            }
+                        })
+                        .doOnUnsubscribe(new Action0() {
+                            @Override
+                            public void call() {
+                                removeNotification(UUIDConverter.fromUUID(charUUID), transactionId);
+                                // sendError(callbackContext, BleError.cancelled().toJS(), false);
+                            }
+                        })
+                        .subscribe(new Observer<Pair<BluetoothGattCharacteristic, byte[]>>() {
+                            @Override
+                            public void onCompleted() {
+                                removeNotification(UUIDConverter.fromUUID(charUUID), transactionId);
+                            }
+
+                            @Override
+                            public void onError(Throwable e) {
+                                removeNotification(UUIDConverter.fromUUID(charUUID), transactionId);
+                                sendError(callbackContext, errorConverter.toError(e).toJS(), false);
+                            }
+
+                            @Override
+                            public void onNext(Pair<BluetoothGattCharacteristic, byte[]> result) {
+                                sendNotification(
+                                        device.getMacAddress(),
+                                        UUIDConverter.fromUUID(serviceUUID),
+                                        UUIDConverter.fromUUID(charUUID),
+                                        result.second,
+                                        transactionId,
+                                        result.first,
+                                        callbackContext);
+                            }
+                        });
+
+                transactions.replaceSubscription(transactionId, subscription);
+
+            }
+        });
+
+    }
+
+    private void sendNotification(final String deviceId,
+                                  final String serviceUUID,
+                                  final String characteristicUUID,
+                                  final byte[] value,
+                                  final String transactionId,
+                                  final BluetoothGattCharacteristic characteristic,
+                                  final CallbackContext callbackContext) {
+
+        synchronized (notificationMap) {
+            String id = notificationMap.get(characteristicUUID);
+            if (id == null || id.equals(transactionId)) {
+                notificationMap.put(characteristicUUID, transactionId);
+
+                try {
+                    JSONObject jsObject = characteristicConverter.toJSObject(characteristic);
+                    jsObject.put("deviceUUID", deviceId);
+                    jsObject.put("serviceUUID", serviceUUID);
+                    jsObject.put("value", Base64.encodeToString(value, Base64.DEFAULT));
+                    sendSuccess(callbackContext, jsObject, true);
+                } catch(JSONException jsonEx) {
+                    // ignored !!
+                }
+            }
+        }
+    }
+
+    private void removeNotification(final String characteristicUUID,
+                                    final String transactionId) {
+        synchronized (notificationMap) {
+            String id = notificationMap.get(characteristicUUID);
+            if (id != null && id.equals(transactionId)) {
+                notificationMap.remove(characteristicUUID);
+            }
+        }
     }
 
     private void monitorDeviceDisconnect(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
@@ -262,49 +414,54 @@ public class CentralPlugin extends CordovaPlugin {
             return;
         }
 
-        rxBleConnection.discoverServices()
-                .subscribe(new Observer<RxBleDeviceServices>() {
-                    @Override
-                    public void onCompleted() {
+        cordova.getThreadPool().execute(new Runnable() {
+            public void run() {
 
-                    }
 
-                    @Override
-                    public void onError(Throwable e) {
-                        sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
-                    }
+                rxBleConnection.discoverServices()
+                        .subscribe(new Observer<RxBleDeviceServices>() {
+                            @Override
+                            public void onCompleted() {
 
-                    @Override
-                    public void onNext(RxBleDeviceServices bluetoothGattServices) {
-                        BluetoothGattService foundService = null;
-                        for (BluetoothGattService service : bluetoothGattServices.getBluetoothGattServices()) {
-                            if (service.getUuid().equals(serviceUUID)) {
-                                foundService = service;
-                                break;
                             }
-                        }
 
-                        if (foundService == null) {
-                            sendError(callbackContext, BleError.serviceNotFound(serviceUUIDStr).toJS(), false);
-                            return;
-                        }
-
-                        try {
-
-                            JSONArray jsCharacteristics = new JSONArray();
-                            for (BluetoothGattCharacteristic characteristic : foundService.getCharacteristics()) {
-                                JSONObject value = characteristicConverter.toJSObject(characteristic);
-                                value.put("deviceUUID", device.getMacAddress());
-                                value.put("serviceUUID", UUIDConverter.fromUUID(serviceUUID));
-                                jsCharacteristics.put(value);
+                            @Override
+                            public void onError(Throwable e) {
+                                sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
                             }
-                            sendSuccess(callbackContext, jsCharacteristics, false);
 
-                        } catch(JSONException jsex) {
-                            // ignored !!
-                        }
-                    }
-                });
+                            @Override
+                            public void onNext(RxBleDeviceServices bluetoothGattServices) {
+                                BluetoothGattService foundService = null;
+                                for (BluetoothGattService service : bluetoothGattServices.getBluetoothGattServices()) {
+                                    if (service.getUuid().equals(serviceUUID)) {
+                                        foundService = service;
+                                        break;
+                                    }
+                                }
+
+                                if (foundService == null) {
+                                    sendError(callbackContext, BleError.serviceNotFound(serviceUUIDStr).toJS(), false);
+                                    return;
+                                }
+
+                                try {
+
+                                    JSONArray jsCharacteristics = new JSONArray();
+                                    for (BluetoothGattCharacteristic characteristic : foundService.getCharacteristics()) {
+                                        JSONObject value = characteristicConverter.toJSObject(characteristic);
+                                        value.put("deviceUUID", device.getMacAddress());
+                                        value.put("serviceUUID", UUIDConverter.fromUUID(serviceUUID));
+                                        jsCharacteristics.put(value);
+                                    }
+                                    sendSuccess(callbackContext, jsCharacteristics, false);
+
+                                } catch (JSONException jsex) {
+                                    // ignored !!
+                                }
+                            }
+                        });
+            }});
 
     }
 
@@ -325,34 +482,39 @@ public class CentralPlugin extends CordovaPlugin {
             return;
         }
 
-        rxBleConnection.discoverServices()
-                .subscribe(new Observer<RxBleDeviceServices>() {
-                    @Override
-                    public void onCompleted() {
+        cordova.getThreadPool().execute(new Runnable() {
+            public void run() {
 
-                    }
+                rxBleConnection.discoverServices()
+                        .subscribe(new Observer<RxBleDeviceServices>() {
+                            @Override
+                            public void onCompleted() {
 
-                    @Override
-                    public void onError(Throwable e) {
-                        sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
-                    }
-
-                    @Override
-                    public void onNext(RxBleDeviceServices bluetoothGattServices) {
-
-                        try {
-                            JSONArray services = new JSONArray();
-                            for (BluetoothGattService service : bluetoothGattServices.getBluetoothGattServices()) {
-                                JSONObject jsService = serviceConverter.toJSObject(service);
-                                jsService.put("deviceUUID", device.getMacAddress());
-                                services.put(jsService);
                             }
-                            sendSuccess(callbackContext, services, false);
-                        }catch(JSONException ex) {
-                            // ignored !
-                        }
-                    }
-                });
+
+                            @Override
+                            public void onError(Throwable e) {
+                                sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+                            }
+
+                            @Override
+                            public void onNext(RxBleDeviceServices bluetoothGattServices) {
+
+                                try {
+                                    JSONArray services = new JSONArray();
+                                    for (BluetoothGattService service : bluetoothGattServices.getBluetoothGattServices()) {
+                                        JSONObject jsService = serviceConverter.toJSObject(service);
+                                        jsService.put("deviceUUID", device.getMacAddress());
+                                        services.put(jsService);
+                                    }
+                                    sendSuccess(callbackContext, services, false);
+                                } catch (JSONException ex) {
+                                    // ignored !
+                                }
+                            }
+                        });
+
+            }});
     }
 
     private void onDeviceDisconnected(RxBleDevice device) {

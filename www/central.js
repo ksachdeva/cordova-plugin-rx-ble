@@ -74,15 +74,38 @@ var Central = {
         var deviceId = getValue(options.deviceId, undefined);
         var serviceUUID = getValue(options.serviceUUID, undefined);
 
-        console.log(deviceId);
-        console.log(serviceUUID);
-
         if (isNotAcceptable(deviceId) || isNotAcceptable(serviceUUID)) {
             throw new Error('Invalid arguments !');
         }
 
         var args = [deviceId, serviceUUID];
         exec(successCallback, errorCallback, PLUGIN_NAME, 'discoverCharacteristics', args);
+    },
+
+    monitorCharacteristic: function(options, successCallback, errorCallback) {
+        var deviceId = getValue(options.deviceId, undefined);
+        var serviceUUID = getValue(options.serviceUUID, undefined);
+        var charUUID = getValue(options.charUUID, undefined);
+        var transactionId = getValue(options.transactionId, undefined);
+
+        if (isNotAcceptable(deviceId) ||
+            isNotAcceptable(serviceUUID) ||
+            isNotAcceptable(charUUID) ||
+            isNotAcceptable(transactionId)) {
+            throw new Error('Invalid arguments !');
+        }
+
+        var args = [deviceId, serviceUUID, charUUID, transactionId];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'monitorCharacteristic', args);
+    },
+
+    cancelTransaction: function(transactionId, successCallback, errorCallback) {
+        if (isNotAcceptable(transactionId)) {
+            throw new Error('Invalid arguments');
+        }
+
+        var args = [transactionId];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'cancelTransaction', args);
     }
 };
 
