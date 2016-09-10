@@ -23,6 +23,7 @@ import com.polidea.rxandroidble.RxBleScanResult;
 import com.polidea.rxandroidble.RxBleDevice;
 import com.polidea.rxandroidble.RxBleDeviceServices;
 import com.polidea.rxandroidble.internal.RxBleLog;
+import com.polidea.rxandroidble.exceptions.BleCharacteristicNotFoundException;
 
 import rx.Observer;
 import rx.Observable;
@@ -40,7 +41,6 @@ import com.ksachdeva.opensource.ble.central.converters.RxBleScanResultConverter;
 import com.ksachdeva.opensource.ble.central.converters.RxBleDeviceConverter;
 import com.ksachdeva.opensource.ble.central.converters.BluetoothGattCharacteristicConverter;
 import com.ksachdeva.opensource.ble.central.converters.BluetoothGattServiceConverter;
-
 
 public class CentralPlugin extends CordovaPlugin {
 
@@ -107,6 +107,12 @@ public class CentralPlugin extends CordovaPlugin {
       } else if (action.equals("cancelTransaction")) {
           cancelTransaction(args, callbackContext);
           return true;
+      } else if (action.equals("readCharacteristic")) {
+          readCharacteristic(args, callbackContext);
+          return true;
+      } else if (action.equals("writeCharacteristic")) {
+          writeCharacteristic(args, callbackContext);
+          return true;
       }
 
       return false;
@@ -129,6 +135,213 @@ public class CentralPlugin extends CordovaPlugin {
         final String transactionId = args.getString(0);
         transactions.removeSubscription(transactionId);
         callbackContext.success();
+    }
+
+    private void writeCharacteristic(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        final String deviceId = args.getString(0);
+        final String serviceUUIDStr = args.getString(1);
+        final String charUUIDStr = args.getString(2);
+        final String valueBase64 = args.getString(3);
+        final boolean response = args.getBoolean(4);
+        final String transactionId = args.getString(5);
+
+        final RxBleDevice device = rxBleClient.getBleDevice(deviceId);
+
+        if (device == null) {
+            sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+            return;
+        }
+
+        final RxBleConnection rxBleConnection = connectionMap.get(deviceId);
+        if (rxBleConnection == null) {
+            sendError(callbackContext, BleError.deviceNotConnected(deviceId).toJS(), false);
+            return;
+        }
+
+        final UUID[] UUIDs = UUIDConverter.convert(serviceUUIDStr, charUUIDStr);
+        if (UUIDs == null) {
+            sendError(callbackContext, BleError.invalidUUIDs(serviceUUIDStr, charUUIDStr).toJS(), false);
+            return;
+        }
+
+        final byte[] value;
+        try {
+            value = Base64.decode(valueBase64, Base64.DEFAULT);
+        } catch (Throwable e) {
+            sendError(callbackContext, BleError.invalidWriteDataForCharacteristic(valueBase64, charUUIDStr).toJS(), false);
+            return;
+        }
+
+        final UUID serviceUUID = UUIDs[0];
+        final UUID charUUID = UUIDs[1];
+
+        cordova.getThreadPool().execute(new Runnable() {
+            public void run() {
+
+                final Subscription subscription = rxBleConnection.discoverServices()
+                        .flatMap(new Func1<RxBleDeviceServices, Observable<BluetoothGattCharacteristic>>() {
+                            @Override
+                            public Observable<BluetoothGattCharacteristic> call(RxBleDeviceServices rxBleDeviceServices) {
+                                return rxBleDeviceServices.getCharacteristic(serviceUUID, charUUID);
+                            }
+                        })
+                        .flatMap(new Func1<BluetoothGattCharacteristic, Observable<byte[]>>() {
+                            @Override
+                            public Observable<byte[]> call(BluetoothGattCharacteristic bluetoothGattCharacteristic) {
+                                bluetoothGattCharacteristic.setWriteType(
+                                        response ?
+                                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT :
+                                                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+                                return rxBleConnection.writeCharacteristic(bluetoothGattCharacteristic, value);
+                            }
+                        }, new Func2<BluetoothGattCharacteristic, byte[], Pair<BluetoothGattCharacteristic, byte[]>>() {
+                            @Override
+                            public Pair<BluetoothGattCharacteristic, byte[]> call(BluetoothGattCharacteristic bluetoothGattCharacteristic, byte[] bytes) {
+                                return new Pair<BluetoothGattCharacteristic, byte[]>(bluetoothGattCharacteristic, bytes);
+                            }
+                        })
+                        .doOnUnsubscribe(new Action0() {
+                            @Override
+                            public void call() {
+                                // BleError.cancelled().reject(promise);
+                                transactions.removeSubscription(transactionId);
+                            }
+                        })
+                        .subscribe(new Observer<Pair<BluetoothGattCharacteristic, byte[]>>() {
+                            @Override
+                            public void onCompleted() {
+                                transactions.removeSubscription(transactionId);
+                            }
+
+                            @Override
+                            public void onError(Throwable e) {
+                                if (e instanceof BleCharacteristicNotFoundException) {
+                                    sendError(callbackContext, BleError.characteristicNotFound(UUIDConverter.fromUUID(charUUID)).toJS(), false);
+                                    return;
+                                }
+                                sendError(callbackContext, errorConverter.toError(e).toJS(), false);
+                                transactions.removeSubscription(transactionId);
+                            }
+
+                            @Override
+                            public void onNext(Pair<BluetoothGattCharacteristic, byte[]> result) {
+                                try {
+                                    JSONObject jsObject = characteristicConverter.toJSObject(result.first);
+                                    jsObject.put("deviceUUID", deviceId);
+                                    jsObject.put("serviceUUID", serviceUUID);
+                                    jsObject.put("value", Base64.encodeToString(result.second, Base64.DEFAULT));
+                                    sendSuccess(callbackContext, jsObject, false);
+                                } catch(JSONException jsonEx) {
+                                    // ignored !!
+                                }
+                            }
+                        });
+
+                transactions.replaceSubscription(transactionId, subscription);
+
+            }
+        });
+    }
+
+
+    private void readCharacteristic(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        final String deviceId = args.getString(0);
+        final String serviceUUIDStr = args.getString(1);
+        final String charUUIDStr = args.getString(2);
+        final String transactionId = args.getString(3);
+
+        final RxBleDevice device = rxBleClient.getBleDevice(deviceId);
+
+        if (device == null) {
+            sendError(callbackContext, BleError.deviceNotFound(deviceId).toJS(), false);
+            return;
+        }
+
+        final RxBleConnection rxBleConnection = connectionMap.get(deviceId);
+        if (rxBleConnection == null) {
+            sendError(callbackContext, BleError.deviceNotConnected(deviceId).toJS(), false);
+            return;
+        }
+
+        final UUID[] UUIDs = UUIDConverter.convert(serviceUUIDStr, charUUIDStr);
+        if (UUIDs == null) {
+            sendError(callbackContext, BleError.invalidUUIDs(serviceUUIDStr, charUUIDStr).toJS(), false);
+            return;
+        }
+
+        final UUID serviceUUID = UUIDs[0];
+        final UUID charUUID = UUIDs[1];
+
+        cordova.getThreadPool().execute(new Runnable() {
+            public void run() {
+
+                final Subscription subscription = rxBleConnection.discoverServices()
+                        .flatMap(new Func1<RxBleDeviceServices, Observable<BluetoothGattCharacteristic>>() {
+                            @Override
+                            public Observable<BluetoothGattCharacteristic> call(RxBleDeviceServices rxBleDeviceServices) {
+                                return rxBleDeviceServices.getCharacteristic(serviceUUID, charUUID);
+                            }
+                        })
+                        .flatMap(new Func1<BluetoothGattCharacteristic, Observable<Observable<byte[]>>>() {
+                            @Override
+                            public Observable<Observable<byte[]>> call(BluetoothGattCharacteristic bluetoothGattCharacteristic) {
+                                return rxBleConnection.setupNotification(bluetoothGattCharacteristic);
+                            }
+                        }, new Func2<BluetoothGattCharacteristic, Observable<byte[]>, Pair<BluetoothGattCharacteristic, Observable<byte[]>>>() {
+                            @Override
+                            public Pair<BluetoothGattCharacteristic, Observable<byte[]>> call(BluetoothGattCharacteristic bluetoothGattCharacteristic, Observable<byte[]> observable) {
+                                return new Pair<BluetoothGattCharacteristic, Observable<byte[]>>(bluetoothGattCharacteristic, observable);
+                            }
+                        })
+                        .flatMap(new Func1<Pair<BluetoothGattCharacteristic, Observable<byte[]>>, Observable<byte[]>>() {
+                            @Override
+                            public Observable<byte[]> call(Pair<BluetoothGattCharacteristic, Observable<byte[]>> bluetoothGattCharacteristicObservablePair) {
+                                return bluetoothGattCharacteristicObservablePair.second;
+                            }
+                        }, new Func2<Pair<BluetoothGattCharacteristic, Observable<byte[]>>, byte[], Pair<BluetoothGattCharacteristic, byte[]>>() {
+                            @Override
+                            public Pair<BluetoothGattCharacteristic, byte[]> call(Pair<BluetoothGattCharacteristic, Observable<byte[]>> bluetoothGattCharacteristicObservablePair, byte[] bytes) {
+                                return new Pair<BluetoothGattCharacteristic, byte[]>(bluetoothGattCharacteristicObservablePair.first, bytes);
+                            }
+                        })
+                        .doOnUnsubscribe(new Action0() {
+                            @Override
+                            public void call() {
+                                transactions.removeSubscription(transactionId);
+                                // sendError(callbackContext, BleError.cancelled().toJS(), false);
+                            }
+                        })
+                        .subscribe(new Observer<Pair<BluetoothGattCharacteristic, byte[]>>() {
+                            @Override
+                            public void onCompleted() {
+                                transactions.removeSubscription(transactionId);
+                            }
+
+                            @Override
+                            public void onError(Throwable e) {
+                                transactions.removeSubscription(transactionId);
+                                sendError(callbackContext, errorConverter.toError(e).toJS(), false);
+                            }
+
+                            @Override
+                            public void onNext(Pair<BluetoothGattCharacteristic, byte[]> result) {
+                                try {
+                                    JSONObject jsObject = characteristicConverter.toJSObject(result.first);
+                                    jsObject.put("deviceUUID", deviceId);
+                                    jsObject.put("serviceUUID", serviceUUID);
+                                    jsObject.put("value", Base64.encodeToString(result.second, Base64.DEFAULT));
+                                    sendSuccess(callbackContext, jsObject, false);
+                                } catch(JSONException jsonEx) {
+                                    // ignored !!
+                                }
+                            }
+                        });
+
+                transactions.replaceSubscription(transactionId, subscription);
+
+            }
+        });
+
     }
 
     private void monitorCharacteristic(final JSONArray args, final CallbackContext callbackContext) throws JSONException {
