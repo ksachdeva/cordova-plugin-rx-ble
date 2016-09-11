@@ -19,10 +19,10 @@
         <config-file target="AndroidManifest.xml" parent="/manifest">
             <uses-permission android:name="android.permission.BLUETOOTH"/>
             <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+            <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
         </config-file>
 
         <source-file src="src/android/CentralPlugin.java" target-dir="src/com/ksachdeva/opensource/ble/central"/>
-        <source-file src="src/android/Event.java" target-dir="src/com/ksachdeva/opensource/ble/central"/>
         <source-file src="src/android/converters/RxBleScanResultConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
         <source-file src="src/android/converters/RxBleDeviceConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
         <source-file src="src/android/converters/BluetoothGattCharacteristicConverter.java" target-dir="src/com/ksachdeva/opensource/ble/central/converters"/>
