@@ -282,26 +282,15 @@ public class CentralPlugin extends CordovaPlugin {
                                 return rxBleDeviceServices.getCharacteristic(serviceUUID, charUUID);
                             }
                         })
-                        .flatMap(new Func1<BluetoothGattCharacteristic, Observable<Observable<byte[]>>>() {
+                        .flatMap(new Func1<BluetoothGattCharacteristic, Observable<byte[]>>() {
                             @Override
-                            public Observable<Observable<byte[]>> call(BluetoothGattCharacteristic bluetoothGattCharacteristic) {
-                                return rxBleConnection.setupNotification(bluetoothGattCharacteristic);
+                            public Observable<byte[]> call(BluetoothGattCharacteristic bluetoothGattCharacteristic) {
+                                return rxBleConnection.readCharacteristic(bluetoothGattCharacteristic);
                             }
-                        }, new Func2<BluetoothGattCharacteristic, Observable<byte[]>, Pair<BluetoothGattCharacteristic, Observable<byte[]>>>() {
+                        }, new Func2<BluetoothGattCharacteristic, byte[], Pair<BluetoothGattCharacteristic, byte[]>>() {
                             @Override
-                            public Pair<BluetoothGattCharacteristic, Observable<byte[]>> call(BluetoothGattCharacteristic bluetoothGattCharacteristic, Observable<byte[]> observable) {
-                                return new Pair<BluetoothGattCharacteristic, Observable<byte[]>>(bluetoothGattCharacteristic, observable);
-                            }
-                        })
-                        .flatMap(new Func1<Pair<BluetoothGattCharacteristic, Observable<byte[]>>, Observable<byte[]>>() {
-                            @Override
-                            public Observable<byte[]> call(Pair<BluetoothGattCharacteristic, Observable<byte[]>> bluetoothGattCharacteristicObservablePair) {
-                                return bluetoothGattCharacteristicObservablePair.second;
-                            }
-                        }, new Func2<Pair<BluetoothGattCharacteristic, Observable<byte[]>>, byte[], Pair<BluetoothGattCharacteristic, byte[]>>() {
-                            @Override
-                            public Pair<BluetoothGattCharacteristic, byte[]> call(Pair<BluetoothGattCharacteristic, Observable<byte[]>> bluetoothGattCharacteristicObservablePair, byte[] bytes) {
-                                return new Pair<BluetoothGattCharacteristic, byte[]>(bluetoothGattCharacteristicObservablePair.first, bytes);
+                            public Pair<BluetoothGattCharacteristic, byte[]> call(BluetoothGattCharacteristic bluetoothGattCharacteristic, byte[] bytes) {
+                                return new Pair<BluetoothGattCharacteristic, byte[]>(bluetoothGattCharacteristic, bytes);
                             }
                         })
                         .doOnUnsubscribe(new Action0() {
