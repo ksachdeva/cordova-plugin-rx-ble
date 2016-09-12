@@ -144,6 +144,16 @@ var Central = {
         var args = [deviceId, serviceUUID, charUUID, value, response, transactionId];
         exec(successCallback, errorCallback, PLUGIN_NAME, 'writeCharacteristic', args);
     },
+
+    getState: function(successCallback, errorCallback) {
+        var args = [];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'getState', args);
+    },
+
+    monitorState: function(successCallback, errorCallback) {
+        var args = [];
+        exec(successCallback, errorCallback, PLUGIN_NAME, 'monitorState', args);
+    }
 };
 
 module.exports = Central;

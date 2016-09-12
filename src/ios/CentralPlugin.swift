@@ -18,6 +18,7 @@ import RxSwift
 
   // callback contextx
   private var monitorDeviceCallbackId: String!;
+  private var monitorStateCallbackId: String!;
 
   override func pluginInitialize() {
     manager = BluetoothManager();
@@ -34,7 +35,19 @@ import RxSwift
   }
 
   private func onStateChange(state: CBCentralManagerState) {
+    if (self.monitorStateCallbackId != nil) {
+      let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAsString: state.asJSObject);
+      pluginResult.setKeepCallbackAsBool(true);
+      commandDelegate.sendPluginResult(pluginResult, callbackId: self.monitorStateCallbackId);
+    }
+  }
 
+  func getState(command: CDVInvokedUrlCommand) {
+    sendSuccess(command, result: manager.state.asJSObject, keepCallback: false);
+  }
+
+  func monitorState(command: CDVInvokedUrlCommand) {
+    self.monitorStateCallbackId = command.callbackId;
   }
 
   func startDeviceScan(command: CDVInvokedUrlCommand) {
