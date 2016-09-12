@@ -9,6 +9,33 @@
         <clobbers target="cordova.plugins.ble.Central"/>
     </js-module>
 
+    <platform name="ios">
+
+        <config-file parent="/widget" target="config.xml">
+            <feature name="CentralPlugin">
+                <param name="ios-package" value="CentralPlugin"/>
+            </feature>
+        </config-file>
+
+        <config-file parent="UIBackgroundModes" target="*-Info.plist">
+            <array>
+                <string>bluetooth-central</string>
+            </array>
+        </config-file>
+
+        <!--
+        <framework src="src/ios/frameworks/RxBlocking.framework" custom="true" embed="true"/>
+        <framework src="src/ios/frameworks/RxSwift.framework" custom="true" embed="true"/>
+        <framework src="src/ios/frameworks/RxCocoa.framework" custom="true" embed="true"/>
+        <framework src="src/ios/frameworks/RxBluetoothKit.framework" custom="true" embed="true"/>
+-->
+        <source-file src="src/ios/CentralPlugin.swift" target-dir="CentralPlugin"/>
+        <source-file src="src/ios/BleError.swift" target-dir="CentralPlugin"/>
+        <source-file src="src/ios/BleUtils.swift" target-dir="CentralPlugin"/>
+        <source-file src="src/ios/BleExtensions.swift" target-dir="CentralPlugin"/>
+
+    </platform>
+
     <platform name="android">
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="CentralPlugin">
@@ -35,5 +62,7 @@
         <framework src="com.polidea.rxandroidble:rxandroidble:1.0.2"/>
 
     </platform>
+
+    <dependency id="cordova-plugin-add-swift-support" url="https://github.com/akofman/cordova-plugin-add-swift-support"/>
 
 </plugin>
