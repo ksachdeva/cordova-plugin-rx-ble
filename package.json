@@ -1,0 +1,37 @@
+{
+    "name": "cordova-plugin-rx-ble",
+    "version": "0.2.0",
+    "description": "Cordova Plugin for Bluetooth Low Energy",
+    "scripts": {},
+    "cordova": {
+        "id": "cordova-plugin-rx-ble",
+        "platforms": [
+            "android",
+            "ios"
+        ]
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ksachdeva/cordova-plugin-rx-ble.git"
+    },
+    "keywords": [
+        "bluetooth",
+        "ble",
+        "bluetooth low energy",
+        "bluetooth smart",
+        "ecosystem:cordova",
+        "cordova-android",
+        "cordova-ios",
+        "rx"
+    ],
+    "engines": [{
+        "name": "cordova",
+        "version": ">=6.0.0"
+    }],
+    "author": "Kapil Sachdeva",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/ksachdeva/cordova-plugin-rx-ble/issues"
+    },
+    "homepage": "https://github.com/ksachdeva/cordova-plugin-rx-ble#readme"
+}
