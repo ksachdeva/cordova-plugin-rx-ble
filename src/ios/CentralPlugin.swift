@@ -34,7 +34,7 @@ import RxSwift
     })
   }
 
-  private func onStateChange(state: CBCentralManagerState) {
+  private func onStateChange(state: BluetoothState) {
     if (self.monitorStateCallbackId != nil) {
       let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAsString: state.asJSObject);
       pluginResult.setKeepCallbackAsBool(true);
